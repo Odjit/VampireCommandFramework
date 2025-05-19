@@ -301,7 +301,7 @@ public static class CommandRegistry
 		{
 			var (command, commandArgs, _) = successfulCommands[0];
 			AddToCommandHistory(ctx.Name, input, command, commandArgs);
-			return ExecuteCommandWithArgs(ctx, command, commandArgs);
+			return ExecuteCommandWithArgs(ctx, command, commandArgs, input);
 		}
 
 		// Case 3: Multiple commands succeeded - store and ask user to select
@@ -343,7 +343,7 @@ public static class CommandRegistry
 		var (command, args, _) = pendingCommands.commands[selectedIndex - 1];
 
 		AddToCommandHistory(ctx.Name, pendingCommands.input, command, args);
-		var result = ExecuteCommandWithArgs(ctx, command, args);
+		var result = ExecuteCommandWithArgs(ctx, command, args, pendingCommands.input);
 		_pendingCommands.Remove(ctx.Name);
 		return result;
 	}
@@ -502,10 +502,10 @@ public static class CommandRegistry
 		}
 
 		AddToCommandHistory(ctx.Name, input, command, commandArgs);
-		return ExecuteCommandWithArgs(ctx, command, commandArgs);
+		return ExecuteCommandWithArgs(ctx, command, commandArgs, input);
 	}
 
-	private static CommandResult ExecuteCommandWithArgs(ICommandContext ctx, CommandMetadata command, object[] commandArgs)
+	private static CommandResult ExecuteCommandWithArgs(ICommandContext ctx, CommandMetadata command, object[] commandArgs, string input)
 	{
 		// Handle Context Type not matching command
 		if (!command.ContextType.IsAssignableFrom(ctx?.GetType()))
@@ -548,6 +548,11 @@ public static class CommandRegistry
 		// Handle Middlewares
 		if (!CanCommandExecute(ctx, command))
 		{
+			var chatCtx = (ChatCommandContext)ctx;
+			if (chatCtx != null)
+				Log.Warning($"{ctx.Name} ({chatCtx.Event.User.PlatformId}) tried to execute '{input}' but was denied");
+			else
+				Log.Warning($"{ctx.Name} tried to execute '{input}' but was denied");
 			ctx.SysReply($"{"[denied]".Color(Color.Red)} {command.Attribute.Name.ToString().Color(Color.Gold)}");
 			return CommandResult.Denied;
 		}
@@ -557,6 +562,11 @@ public static class CommandRegistry
 		// Execute Command
 		try
 		{
+			var chatCtx = (ChatCommandContext)ctx;
+			if (chatCtx != null)
+				Log.Info($"{ctx.Name} ({chatCtx.Event.User.PlatformId}) executing '{input}'");
+			else
+				Log.Info($"{ctx.Name} executing '{input}'");
 			command.Method.Invoke(instance, commandArgs);
 		}
 		catch (TargetInvocationException tie) when (tie.InnerException is CommandException e)
@@ -627,7 +637,7 @@ public static class CommandRegistry
 		{
 			var selectedCommand = history[index - 1];
 			ctx.SysReply($"Executing command {index.ToString().Color(Color.Gold)}: {selectedCommand.input.Color(Color.Command)}");
-			ExecuteCommandWithArgs(ctx, selectedCommand.Command, selectedCommand.Args);
+			ExecuteCommandWithArgs(ctx, selectedCommand.Command, selectedCommand.Args, selectedCommand.input);
 			return;
 		}
 
@@ -636,7 +646,7 @@ public static class CommandRegistry
 		{
 			var mostRecent = history[0];
 			ctx.SysReply($"Repeating most recent command: {mostRecent.input.Color(Color.Command)}");
-			ExecuteCommandWithArgs(ctx, mostRecent.Command, mostRecent.Args);
+			ExecuteCommandWithArgs(ctx, mostRecent.Command, mostRecent.Args, mostRecent.input);
 			return;
 		}
 
